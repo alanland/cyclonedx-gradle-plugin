@@ -18,17 +18,17 @@
  */
 package org.cyclonedx.gradle;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.input.BOMInputStream;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.maven.artifact.Artifact;
@@ -49,6 +49,10 @@ import org.gradle.api.Project;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.ResolvedArtifact;
 import org.gradle.api.logging.Logger;
+
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
 
 /**
  * Ported from CycloneDX Maven plugin.
@@ -287,12 +291,22 @@ class MavenHelper {
      */
     MavenProject readPom(File file) {
         try {
+            final XMLStreamReader xmlStreamReader = XMLInputFactory.newInstance().createXMLStreamReader(new FileReader(file));
+            String fileEncoding = xmlStreamReader.getEncoding();
+            String encodingFromXMLDeclaration = xmlStreamReader.getCharacterEncodingScheme();
+            Path tempFile = Files.createTempFile(null, null);
+            if (encodingFromXMLDeclaration != null && !encodingFromXMLDeclaration.equals(fileEncoding)) {
+                File newFile = new File(tempFile.toAbsolutePath() + ".xml");
+                String content = Files.readString(file.toPath()).replaceFirst("encoding=\"" + encodingFromXMLDeclaration + "\"", "");
+                FileUtils.writeStringToFile(newFile, content, Charset.forName(encodingFromXMLDeclaration));
+                file = newFile;
+            }
             final MavenXpp3Reader mavenreader = new MavenXpp3Reader();
             try (final InputStreamReader reader = new InputStreamReader(new BOMInputStream(new FileInputStream(file)))) {
                 final Model model = mavenreader.read(reader);
                 return new MavenProject(model);
             }
-        } catch (XmlPullParserException | IOException e) {
+        } catch (XmlPullParserException | IOException | XMLStreamException e) {
             logger.error("An error occurred attempting to read POM", e);
         }
         return null;
