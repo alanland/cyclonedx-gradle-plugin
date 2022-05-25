@@ -33,7 +33,7 @@ test {
 }
 
 project.ext.organization = 'Alanland'
-group = 'com.github.alanland'
+group = 'io.github.alanland'
 version = '1.6.0'
 
 // populate properties into plugin.properties at build time
@@ -65,7 +65,7 @@ pluginBundle {
 gradlePlugin {
     plugins {
         cycloneDxPlugin {
-            id = 'com.github.alanland.bom'
+            id = 'io.github.alanland.bom'
             implementationClass = 'org.cyclonedx.gradle.CycloneDxPlugin'
         }
     }
