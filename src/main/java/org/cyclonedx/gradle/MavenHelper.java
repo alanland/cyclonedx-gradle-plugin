@@ -18,16 +18,6 @@
  */
 package org.cyclonedx.gradle;
 
-import java.io.*;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.input.BOMInputStream;
 import org.apache.commons.lang3.StringUtils;
@@ -53,14 +43,25 @@ import org.gradle.api.logging.Logger;
 import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
+import java.io.*;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.regex.Pattern;
 
 /**
  * Ported from CycloneDX Maven plugin.
  */
 class MavenHelper {
 
-    private Logger logger;
-    private CycloneDxSchema.Version schemaVersion;
+    private final Logger logger;
+    private final CycloneDxSchema.Version schemaVersion;
 
     public MavenHelper(Logger logger, CycloneDxSchema.Version schemaVersion) {
         this.logger = logger;
@@ -71,8 +72,9 @@ class MavenHelper {
      * Resolves meta for an artifact. This method essentially does what an 'effective pom' would do,
      * but for an artifact instead of a project. This method will attempt to resolve metadata at
      * the lowest level of the inheritance tree and work its way up.
-     * @param artifact the artifact to resolve metadata for
-     * @param project the associated project for the artifact
+     *
+     * @param artifact  the artifact to resolve metadata for
+     * @param project   the associated project for the artifact
      * @param component the component to populate data for
      */
     void getClosestMetadata(ResolvedArtifact artifact, MavenProject project, Component component) {
@@ -89,7 +91,8 @@ class MavenHelper {
 
     /**
      * Extracts data from a project and adds the data to the component.
-     * @param project the project to extract data from
+     *
+     * @param project   the project to extract data from
      * @param component the component to add data to
      */
     public void extractMetadata(MavenProject project, Component component) {
@@ -209,13 +212,13 @@ class MavenHelper {
                 }
             }
             if (artifactLicense.getName() != null && !resolved) {
-                final org.cyclonedx.model.License license = new org.cyclonedx.model.License();;
+                final org.cyclonedx.model.License license = new org.cyclonedx.model.License();
                 license.setName(artifactLicense.getName().trim());
                 if (StringUtils.isNotBlank(artifactLicense.getUrl())) {
                     try {
                         final URI uri = new URI(artifactLicense.getUrl().trim());
                         license.setUrl(uri.toString());
-                    } catch (URISyntaxException  e) {
+                    } catch (URISyntaxException e) {
                         // throw it away
                     }
                 }
@@ -228,8 +231,9 @@ class MavenHelper {
     /**
      * Retrieves the parent pom for an artifact (if any). The parent pom may contain license,
      * description, and other metadata whereas the artifact itself may not.
+     *
      * @param artifact the artifact to retrieve the parent pom for
-     * @param project the maven project the artifact is part of
+     * @param project  the maven project the artifact is part of
      */
     private MavenProject retrieveParentProject(ResolvedArtifact artifact, MavenProject project) {
         if (artifact.getFile() == null || artifact.getFile().getParentFile() == null || !isDescribedArtifact(artifact)) {
@@ -242,7 +246,7 @@ class MavenHelper {
             final StringBuilder getout = new StringBuilder("../../../");
             final ModuleVersionIdentifier mid = artifact.getModuleVersion().getId();
             final int periods = mid.getGroup().length() - mid.getGroup().replace(".", "").length();
-            for (int i= 0; i< periods; i++) {
+            for (int i = 0; i < periods; i++) {
                 getout.append("../");
             }
             final File parentFile = new File(artifact.getFile().getParentFile(), getout + parent.getGroupId().replace(".", "/") + "/" + parent.getArtifactId() + "/" + parent.getVersion() + "/" + parent.getArtifactId() + "-" + parent.getVersion() + ".pom");
@@ -259,6 +263,7 @@ class MavenHelper {
 
     /**
      * Extracts a pom from an artifacts jar file and creates a MavenProject from it.
+     *
      * @param artifact the artifact to extract the pom from
      * @return a Maven project
      */
@@ -270,7 +275,7 @@ class MavenHelper {
             try {
                 final JarFile jarFile = new JarFile(artifact.getFile());
                 final ModuleVersionIdentifier mid = artifact.getModuleVersion().getId();
-                final JarEntry entry = jarFile.getJarEntry("META-INF/maven/"+ mid.getGroup() + "/" + mid.getName() + "/pom.xml");
+                final JarEntry entry = jarFile.getJarEntry("META-INF/maven/" + mid.getGroup() + "/" + mid.getName() + "/pom.xml");
                 if (entry != null) {
                     try (final InputStream input = jarFile.getInputStream(entry)) {
                         return readPom(input);
@@ -283,24 +288,47 @@ class MavenHelper {
         return null;
     }
 
+    private File removeEncodingDeclare(File file) throws IOException, XMLStreamException {
+        final XMLStreamReader xmlStreamReader = XMLInputFactory.newInstance().createXMLStreamReader(new FileReader(file));
+        String fileEncoding = xmlStreamReader.getEncoding();
+        String encodingFromXMLDeclaration = xmlStreamReader.getCharacterEncodingScheme();
+        if (encodingFromXMLDeclaration != null &&
+            !encodingFromXMLDeclaration.replaceAll("-", "").replaceAll("_", "")
+                .equals(fileEncoding.replaceAll("-", "").replaceAll("_", ""))) {
+            Path tempFile = Files.createTempFile(null, null);
+            File newFile = new File(tempFile.toAbsolutePath() + ".xml");
+            String content = removeEncodingDeclare(Files.readString(file.toPath()));
+            FileUtils.writeStringToFile(newFile, content, Charset.forName(encodingFromXMLDeclaration));
+            logger.warn("UseNoEncodingFile:");
+            logger.warn(file.getAbsolutePath());
+            logger.warn(newFile.getAbsolutePath());
+            return newFile;
+        } else {
+            return file;
+        }
+    }
+
+    private String removeEncodingDeclare(String string) throws IOException {
+        Pattern p = Pattern.compile("encoding=\"[\\w-\\d]*\"", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        return p.matcher(string).replaceFirst("");
+    }
+
+
+    private InputStream removeEncodingDeclare(InputStream is) throws IOException {
+        String text = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        return new ByteArrayInputStream(removeEncodingDeclare(text).getBytes());
+    }
+
     /**
      * Reads a POM and creates a MavenProject from it.
+     *
      * @param file the file object of the POM to read
      * @return a MavenProject
      * @throws IOException oops
      */
     MavenProject readPom(File file) {
         try {
-            final XMLStreamReader xmlStreamReader = XMLInputFactory.newInstance().createXMLStreamReader(new FileReader(file));
-            String fileEncoding = xmlStreamReader.getEncoding();
-            String encodingFromXMLDeclaration = xmlStreamReader.getCharacterEncodingScheme();
-            Path tempFile = Files.createTempFile(null, null);
-            if (encodingFromXMLDeclaration != null && !encodingFromXMLDeclaration.equals(fileEncoding)) {
-                File newFile = new File(tempFile.toAbsolutePath() + ".xml");
-                String content = Files.readString(file.toPath()).replaceFirst("encoding=\"" + encodingFromXMLDeclaration + "\"", "");
-                FileUtils.writeStringToFile(newFile, content, Charset.forName(encodingFromXMLDeclaration));
-                file = newFile;
-            }
+            file = removeEncodingDeclare(file);
             final MavenXpp3Reader mavenreader = new MavenXpp3Reader();
             try (final InputStreamReader reader = new InputStreamReader(new BOMInputStream(new FileInputStream(file)))) {
                 final Model model = mavenreader.read(reader);
@@ -314,11 +342,13 @@ class MavenHelper {
 
     /**
      * Reads a POM and creates a MavenProject from it.
+     *
      * @param in the inputstream to read from
      * @return a MavenProject
      */
     MavenProject readPom(InputStream in) {
         try {
+            in = removeEncodingDeclare(in);
             final MavenXpp3Reader mavenreader = new MavenXpp3Reader();
             try (final InputStreamReader reader = new InputStreamReader(in)) {
                 final Model model = mavenreader.read(reader);
@@ -332,7 +362,8 @@ class MavenHelper {
 
     /**
      * Resolves an effective pom, including properties inherited from parent hierarchy.
-     * @param pomFile the dependency pomFile
+     *
+     * @param pomFile       the dependency pomFile
      * @param gradleProject the current gradle project which gets used as the base resolver
      * @return model for effective pom
      */
@@ -360,6 +391,7 @@ class MavenHelper {
     /**
      * Returns true for any artifact type which will positively have a POM that
      * describes the artifact.
+     *
      * @param artifact the artifact
      * @return true if artifact will have a POM, false if not
      */
@@ -370,6 +402,7 @@ class MavenHelper {
     /**
      * Returns true for any artifact type which will positively have a POM that
      * describes the artifact.
+     *
      * @param artifact the artifact
      * @return true if artifact will have a POM, false if not
      */

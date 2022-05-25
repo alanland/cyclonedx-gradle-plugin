@@ -32,15 +32,15 @@ test {
     useJUnit()
 }
 
-project.ext.organization = 'CycloneDX'
-group = 'org.cyclonedx'
+project.ext.organization = 'Alanland'
+group = 'com.github.alanland'
 version = '1.6.0'
 
 // populate properties into plugin.properties at build time
 ant.propertyfile(file: "src/main/resources/plugin.properties") {
-  entry(key: "vendor", value: project.ext.organization)
-  entry(key: "name", value: project.name)
-  entry(key: "version", value: project.version)
+    entry(key: "vendor", value: project.ext.organization)
+    entry(key: "name", value: project.name)
+    entry(key: "version", value: project.version)
 }
 
 sourceCompatibility = JavaVersion.VERSION_1_8
@@ -52,7 +52,7 @@ tasks.withType(JavaCompile) {
 
 pluginBundle {
     website = 'https://cyclonedx.org'
-    vcsUrl = 'https://github.com/CycloneDX/cyclonedx-gradle-plugin.git'
+    vcsUrl = 'https://github.com/alanland/cyclonedx-gradle-plugin.git'
     tags = [ 'cyclonedx', 'dependency', 'dependencies', 'owasp', 'inventory', 'bom', 'sbom' ]
     plugins {
         cycloneDxPlugin {
@@ -65,7 +65,7 @@ pluginBundle {
 gradlePlugin {
     plugins {
         cycloneDxPlugin {
-            id = 'org.cyclonedx.bom'
+            id = 'com.github.alanland.bom'
             implementationClass = 'org.cyclonedx.gradle.CycloneDxPlugin'
         }
     }
